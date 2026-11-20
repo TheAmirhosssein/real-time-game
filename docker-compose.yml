@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: core-duel-db
+    environment:
+      POSTGRES_USER: coreduel
+      POSTGRES_PASSWORD: coreduel
+      POSTGRES_DB: coreduel
+    ports:
+      - "5432:5432"
+    volumes:
+      - core_duel_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coreduel -d coreduel"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  core_duel_pg:

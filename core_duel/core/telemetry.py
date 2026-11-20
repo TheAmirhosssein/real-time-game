@@ -1,4 +1,4 @@
-"""In-memory movement buffer sampled ~15 Hz, flushed with executemany()."""
+"""In-memory movement buffer sampled ~15 Hz, flushed in one ORM batch insert."""
 
 from __future__ import annotations
 

@@ -1,129 +1,65 @@
-"""SQLite schema, CRUD, and batched movement-log writes (WAL)."""
+"""PostgreSQL access via SQLAlchemy 2.0 — schema init, user CRUD, batch logs."""
 
 from __future__ import annotations
 
-import sqlite3
-import threading
-from pathlib import Path
-from typing import Any, Iterable, Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
-    user_id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT,
-    is_guest INTEGER NOT NULL DEFAULT 0,
-    score INTEGER NOT NULL DEFAULT 1000,
-    wins INTEGER NOT NULL DEFAULT 0,
-    losses INTEGER NOT NULL DEFAULT 0,
-    email TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+from sqlalchemy import create_engine, func, select, text, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session, sessionmaker
 
-CREATE TABLE IF NOT EXISTS matchmaking_queue (
-    queue_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT UNIQUE NOT NULL,
-    score INTEGER NOT NULL,
-    arena_preset TEXT DEFAULT 'Standard Containment',
-    status TEXT DEFAULT 'SEARCHING',
-    matched_room_id TEXT,
-    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(user_id)
-);
+from core_duel.services.models import Base, Match, MatchmakingQueue, MovementLog, User
+from core_duel.settings import DATABASE_URL
 
-CREATE TABLE IF NOT EXISTS matches (
-    match_id TEXT PRIMARY KEY,
-    player1_id TEXT NOT NULL,
-    player2_id TEXT NOT NULL,
-    winner_id TEXT,
-    p1_score_before INTEGER,
-    p2_score_before INTEGER,
-    p1_score_delta INTEGER,
-    p2_score_delta INTEGER,
-    duration_seconds REAL,
-    arena_preset TEXT,
-    played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (player1_id) REFERENCES users(user_id),
-    FOREIGN KEY (player2_id) REFERENCES users(user_id)
-);
 
-CREATE TABLE IF NOT EXISTS movement_logs (
-    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    match_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    tick INTEGER NOT NULL,
-    timestamp_ms INTEGER NOT NULL,
-    pos_x REAL NOT NULL,
-    pos_y REAL NOT NULL,
-    vel_x REAL NOT NULL,
-    vel_y REAL NOT NULL,
-    angle REAL NOT NULL,
-    action_flags TEXT,
-    FOREIGN KEY (match_id) REFERENCES matches(match_id),
-    FOREIGN KEY (user_id) REFERENCES users(user_id)
-);
-"""
+def user_to_dict(user: User) -> dict[str, Any]:
+    return {
+        "user_id": user.user_id,
+        "username": user.username,
+        "is_guest": bool(user.is_guest),
+        "score": int(user.score),
+        "wins": int(user.wins),
+        "losses": int(user.losses),
+        "email": user.email,
+    }
 
 
 class DatabaseManager:
-    def __init__(self, db_path: Optional[Path] = None) -> None:
-        root = Path(__file__).resolve().parents[1]
-        data_dir = root / "data"
-        data_dir.mkdir(parents=True, exist_ok=True)
-        self.db_path = Path(db_path) if db_path else data_dir / "core_duel.db"
-        self._local = threading.local()
-        self._init_schema()
+    def __init__(self, url: Optional[str] = None) -> None:
+        self.url = url or DATABASE_URL
+        self.engine = create_engine(
+            self.url, pool_pre_ping=True, pool_size=5, max_overflow=10
+        )
+        self.Session = sessionmaker(self.engine, expire_on_commit=False)
+        Base.metadata.create_all(self.engine)
+        self._migrate()
 
-    def connect(self) -> sqlite3.Connection:
-        conn = getattr(self._local, "conn", None)
-        if conn is None:
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA foreign_keys=ON")
-            conn.execute("PRAGMA busy_timeout=4000")
-            self._local.conn = conn
-        return conn
+    def _migrate(self) -> None:
+        # Epoch milliseconds exceed 32-bit INTEGER; widen in-place for existing DBs.
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE movement_logs "
+                    "ALTER COLUMN timestamp_ms TYPE BIGINT"
+                )
+            )
 
-    def _init_schema(self) -> None:
-        conn = self.connect()
-        conn.executescript(SCHEMA)
-        conn.commit()
-
-    def execute(self, sql: str, params: Iterable[Any] = ()) -> sqlite3.Cursor:
-        conn = self.connect()
-        cur = conn.execute(sql, tuple(params))
-        conn.commit()
-        return cur
-
-    def query(self, sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:
-        cur = self.connect().execute(sql, tuple(params))
-        return cur.fetchall()
-
-    def query_one(self, sql: str, params: Iterable[Any] = ()) -> Optional[sqlite3.Row]:
-        cur = self.connect().execute(sql, tuple(params))
-        return cur.fetchone()
-
-    def user_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
-        return {
-            "user_id": row["user_id"],
-            "username": row["username"],
-            "is_guest": bool(row["is_guest"]),
-            "score": int(row["score"]),
-            "wins": int(row["wins"]),
-            "losses": int(row["losses"]),
-            "email": row["email"],
-        }
+    def session(self) -> Session:
+        return self.Session()
 
     def get_user_by_id(self, user_id: str) -> Optional[dict[str, Any]]:
-        row = self.query_one("SELECT * FROM users WHERE user_id = ?", (user_id,))
-        return self.user_to_dict(row) if row else None
+        with self.session() as s:
+            user = s.get(User, user_id)
+            return user_to_dict(user) if user else None
 
-    def get_user_by_username(self, username: str) -> Optional[sqlite3.Row]:
-        return self.query_one(
-            "SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username,)
-        )
+    def get_user_by_username(self, username: str) -> Optional[User]:
+        with self.session() as s:
+            return s.scalar(
+                select(User).where(
+                    func.lower(User.username) == username.strip().lower()
+                )
+            )
 
     def insert_user(
         self,
@@ -134,22 +70,28 @@ class DatabaseManager:
         email: Optional[str] = None,
         score: int = 1000,
     ) -> dict[str, Any]:
-        self.execute(
-            """
-            INSERT INTO users (user_id, username, password_hash, is_guest, email, score)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (user_id, username, password_hash, 1 if is_guest else 0, email, score),
+        user = User(
+            user_id=user_id,
+            username=username,
+            password_hash=password_hash,
+            is_guest=is_guest,
+            email=email,
+            score=score,
         )
-        user = self.get_user_by_id(user_id)
-        assert user is not None
-        return user
+        with self.session() as s:
+            s.add(user)
+            s.commit()
+            s.refresh(user)
+            return user_to_dict(user)
 
     def touch_user(self, user_id: str) -> None:
-        self.execute(
-            "UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE user_id = ?",
-            (user_id,),
-        )
+        with self.session() as s:
+            s.execute(
+                update(User)
+                .where(User.user_id == user_id)
+                .values(last_active=func.now())
+            )
+            s.commit()
 
     def apply_match_result(
         self,
@@ -158,14 +100,26 @@ class DatabaseManager:
         winner_delta: int,
         loser_delta: int,
     ) -> None:
-        self.execute(
-            "UPDATE users SET score = score + ?, wins = wins + 1, last_active = CURRENT_TIMESTAMP WHERE user_id = ?",
-            (winner_delta, winner_id),
-        )
-        self.execute(
-            "UPDATE users SET score = MAX(100, score + ?), losses = losses + 1, last_active = CURRENT_TIMESTAMP WHERE user_id = ?",
-            (loser_delta, loser_id),
-        )
+        with self.session() as s:
+            s.execute(
+                update(User)
+                .where(User.user_id == winner_id)
+                .values(
+                    score=User.score + winner_delta,
+                    wins=User.wins + 1,
+                    last_active=func.now(),
+                )
+            )
+            s.execute(
+                update(User)
+                .where(User.user_id == loser_id)
+                .values(
+                    score=func.greatest(100, User.score + loser_delta),
+                    losses=User.losses + 1,
+                    last_active=func.now(),
+                )
+            )
+            s.commit()
 
     def insert_match(
         self,
@@ -176,15 +130,25 @@ class DatabaseManager:
         p2_score_before: int,
         arena_preset: str,
     ) -> None:
-        self.execute(
-            """
-            INSERT OR IGNORE INTO matches (
-                match_id, player1_id, player2_id,
-                p1_score_before, p2_score_before, arena_preset
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (match_id, player1_id, player2_id, p1_score_before, p2_score_before, arena_preset),
+        stmt = (
+            pg_insert(Match)
+            .values(
+                match_id=match_id,
+                player1_id=player1_id,
+                player2_id=player2_id,
+                p1_score_before=p1_score_before,
+                p2_score_before=p2_score_before,
+                arena_preset=arena_preset,
+            )
+            .on_conflict_do_nothing(index_elements=[Match.match_id])
         )
+        with self.session() as s:
+            s.execute(stmt)
+            s.commit()
+
+    def get_match(self, match_id: str) -> Optional[Match]:
+        with self.session() as s:
+            return s.get(Match, match_id)
 
     def finalize_match(
         self,
@@ -194,26 +158,146 @@ class DatabaseManager:
         p2_delta: int,
         duration_seconds: float,
     ) -> None:
-        self.execute(
-            """
-            UPDATE matches
-            SET winner_id = ?, p1_score_delta = ?, p2_score_delta = ?, duration_seconds = ?
-            WHERE match_id = ?
-            """,
-            (winner_id, p1_delta, p2_delta, duration_seconds, match_id),
-        )
+        with self.session() as s:
+            s.execute(
+                update(Match)
+                .where(Match.match_id == match_id)
+                .values(
+                    winner_id=winner_id,
+                    p1_score_delta=p1_delta,
+                    p2_score_delta=p2_delta,
+                    duration_seconds=duration_seconds,
+                )
+            )
+            s.commit()
 
     def insert_movement_logs(self, rows: list[tuple[Any, ...]]) -> None:
         if not rows:
             return
-        conn = self.connect()
-        conn.executemany(
-            """
-            INSERT INTO movement_logs (
-                match_id, user_id, tick, timestamp_ms,
-                pos_x, pos_y, vel_x, vel_y, angle, action_flags
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            rows,
+        payload = [
+            {
+                "match_id": r[0],
+                "user_id": r[1],
+                "tick": r[2],
+                "timestamp_ms": r[3],
+                "pos_x": r[4],
+                "pos_y": r[5],
+                "vel_x": r[6],
+                "vel_y": r[7],
+                "angle": r[8],
+                "action_flags": r[9],
+            }
+            for r in rows
+        ]
+        with self.session() as s:
+            s.execute(pg_insert(MovementLog), payload)
+            s.commit()
+
+    def upsert_queue(self, user_id: str, score: int, arena_preset: str) -> None:
+        now = datetime.now(timezone.utc)
+        stmt = pg_insert(MatchmakingQueue).values(
+            user_id=user_id,
+            score=score,
+            arena_preset=arena_preset,
+            status="SEARCHING",
+            matched_room_id=None,
+            joined_at=now,
         )
-        conn.commit()
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[MatchmakingQueue.user_id],
+            set_={
+                "score": stmt.excluded.score,
+                "arena_preset": stmt.excluded.arena_preset,
+                "status": "SEARCHING",
+                "matched_room_id": None,
+                "joined_at": now,
+            },
+        )
+        with self.session() as s:
+            s.execute(stmt)
+            s.commit()
+
+    def delete_queue(self, user_id: str) -> None:
+        with self.session() as s:
+            row = s.scalar(
+                select(MatchmakingQueue).where(MatchmakingQueue.user_id == user_id)
+            )
+            if row:
+                s.delete(row)
+                s.commit()
+
+    def get_queue(self, user_id: str) -> Optional[MatchmakingQueue]:
+        with self.session() as s:
+            return s.scalar(
+                select(MatchmakingQueue).where(MatchmakingQueue.user_id == user_id)
+            )
+
+    def publish_room(self, match_id: str, room: str) -> None:
+        with self.session() as s:
+            s.execute(
+                update(MatchmakingQueue)
+                .where(MatchmakingQueue.matched_room_id.startswith(match_id))
+                .values(matched_room_id=room)
+            )
+            s.commit()
+
+    def try_pair(self, user_id: str, score: int, rng: int, arena_preset: str) -> None:
+        from uuid import uuid4
+
+        with self.session() as s:
+            me = s.scalar(
+                select(MatchmakingQueue)
+                .where(
+                    MatchmakingQueue.user_id == user_id,
+                    MatchmakingQueue.status == "SEARCHING",
+                )
+                .with_for_update()
+            )
+            if me is None:
+                return
+            query = (
+                select(MatchmakingQueue)
+                .where(
+                    MatchmakingQueue.user_id != user_id,
+                    MatchmakingQueue.status == "SEARCHING",
+                    func.abs(MatchmakingQueue.score - score) <= rng,
+                )
+                .order_by(MatchmakingQueue.joined_at.asc())
+                .with_for_update(skip_locked=True)
+                .limit(1)
+            )
+            opponent = s.scalar(query)
+            if opponent is None and rng >= 500:
+                opponent = s.scalar(
+                    select(MatchmakingQueue)
+                    .where(
+                        MatchmakingQueue.user_id != user_id,
+                        MatchmakingQueue.status == "SEARCHING",
+                    )
+                    .order_by(MatchmakingQueue.joined_at.asc())
+                    .with_for_update(skip_locked=True)
+                    .limit(1)
+                )
+            if opponent is None:
+                return
+            match_id = str(uuid4())
+            host = me if me.joined_at <= opponent.joined_at else opponent
+            guest = opponent if host is me else me
+            preset = me.arena_preset or arena_preset
+            host.status = "MATCHED"
+            guest.status = "MATCHED"
+            host.matched_room_id = match_id
+            guest.matched_room_id = match_id
+            p1 = s.get(User, host.user_id)
+            p2 = s.get(User, guest.user_id)
+            s.add(
+                Match(
+                    match_id=match_id,
+                    player1_id=host.user_id,
+                    player2_id=guest.user_id,
+                    p1_score_before=p1.score if p1 else score,
+                    p2_score_before=p2.score if p2 else opponent.score,
+                    arena_preset=preset,
+                )
+            )
+            s.commit()

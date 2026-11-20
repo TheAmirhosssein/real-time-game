@@ -8,7 +8,7 @@ import secrets
 import uuid
 from typing import Any, Optional
 
-from core_duel.services.database import DatabaseManager
+from core_duel.services.database import DatabaseManager, user_to_dict
 
 CALLSIGN_RE = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 PBKDF2_ROUNDS = 120_000
@@ -73,13 +73,13 @@ class AuthService:
         username = username.strip()
         if not username or not password:
             raise AuthError("Enter callsign and password.")
-        row = self.db.get_user_by_username(username)
-        if not row or row["is_guest"]:
+        user = self.db.get_user_by_username(username)
+        if not user or user.is_guest:
             raise AuthError("Unknown pilot or invalid credentials.")
-        if not row["password_hash"] or not self.verify_password(password, row["password_hash"]):
+        if not user.password_hash or not self.verify_password(password, user.password_hash):
             raise AuthError("Unknown pilot or invalid credentials.")
-        self.db.touch_user(row["user_id"])
-        return self.db.user_to_dict(row)
+        self.db.touch_user(user.user_id)
+        return user_to_dict(user)
 
     def continue_as_guest(self) -> dict[str, Any]:
         for _ in range(16):

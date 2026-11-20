@@ -24,7 +24,7 @@ from core_duel.core.entities import PlayerCore
 from core_duel.core.telemetry import TelemetryBuffer
 from core_duel.palette import THEME
 from core_duel.services.auth_service import AuthService
-from core_duel.services.database import DatabaseManager
+from core_duel.services.database import DatabaseManager, user_to_dict
 from core_duel.services.matchmaking import MatchmakingService
 from core_duel.services.net import MatchSocket
 from core_duel.ui.game_screen import GameScreen
@@ -78,7 +78,7 @@ class CoreDuelApp(App):
     def ensure_local_rival(self) -> dict:
         existing = self.db.get_user_by_username("Local_Rival")
         if existing:
-            return self.db.user_to_dict(existing)
+            return user_to_dict(existing)
         return self.db.insert_user(
             user_id=str(uuid.uuid4()),
             username="Local_Rival",
@@ -90,7 +90,7 @@ class CoreDuelApp(App):
     def ensure_training_drone(self) -> dict:
         existing = self.db.get_user_by_username("TRAINING_DRONE")
         if existing:
-            return self.db.user_to_dict(existing)
+            return user_to_dict(existing)
         return self.db.insert_user(
             user_id=str(uuid.uuid4()),
             username="TRAINING_DRONE",
