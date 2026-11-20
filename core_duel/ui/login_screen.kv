@@ -1,0 +1,95 @@
+<LoginScreen>:
+    name: "login_screen"
+    canvas.before:
+        Color:
+            rgba: BG_VOID
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    PanelCard:
+        orientation: "vertical"
+        size_hint: None, None
+        size: "420dp", "460dp"
+        pos_hint: {"center_x": 0.5, "center_y": 0.5}
+        padding: "28dp"
+        spacing: "10dp"
+        bg_color: SURFACE_PANEL
+        border_color: BORDER_CONDUIT
+
+        Label:
+            text: "CORE DUEL  //  1V1"
+            font_size: "12sp"
+            color: ACCENT_CYAN
+            bold: True
+            size_hint_y: None
+            height: "22dp"
+            halign: "center"
+            text_size: self.size
+
+        Label:
+            text: "PILOT LOGIN"
+            font_size: "26sp"
+            bold: True
+            size_hint_y: None
+            height: "36dp"
+            halign: "center"
+            text_size: self.size
+
+        Label:
+            text: "Authenticate to enter the containment lobby."
+            font_size: "13sp"
+            color: TEXT_MUTED
+            size_hint_y: None
+            height: "28dp"
+            halign: "center"
+            text_size: self.size
+
+        CyberInput:
+            id: callsign
+            hint_text: "Callsign / Username"
+            size_hint_y: None
+            height: "44dp"
+
+        CyberInput:
+            id: password
+            hint_text: "Password"
+            password: True
+            size_hint_y: None
+            height: "44dp"
+
+        Label:
+            text: root.status_text
+            color: root.status_color
+            font_size: "12sp"
+            size_hint_y: None
+            height: "22dp"
+            halign: "center"
+            text_size: self.size
+
+        CyberButton:
+            text: "ENTER LOBBY"
+            size_hint_y: None
+            height: "46dp"
+            bg_color: ACCENT_CYAN
+            border_color: ACCENT_CYAN
+            color: 0.02, 0.05, 0.08, 1
+            on_release: root.do_login()
+
+        CyberButton:
+            text: "CONTINUE AS GUEST"
+            size_hint_y: None
+            height: "44dp"
+            bg_color: SURFACE_ELEVATED
+            border_color: BORDER_CONDUIT
+            on_release: root.do_guest()
+
+        Button:
+            text: "CREATE NEW ACCOUNT"
+            background_normal: ""
+            background_down: ""
+            background_color: 0, 0, 0, 0
+            color: ACCENT_CYAN
+            size_hint_y: None
+            height: "32dp"
+            on_release: root.go_register()
