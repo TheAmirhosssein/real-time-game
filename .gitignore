@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Core Duel local database
+core_duel/data/
+*.db
+*.db-wal
+*.db-shm
