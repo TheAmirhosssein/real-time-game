@@ -1,0 +1,205 @@
+<LobbyScreen>:
+    name: "lobby_screen"
+    canvas.before:
+        Color:
+            rgba: BG_VOID
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        orientation: "vertical"
+        padding: "16dp"
+        spacing: "12dp"
+
+        PanelCard:
+            orientation: "horizontal"
+            size_hint_y: None
+            height: "64dp"
+            padding: ["16dp", "8dp"]
+            spacing: "12dp"
+            bg_color: SURFACE_PANEL
+
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_x: 0.28
+                Label:
+                    text: root.callsign
+                    bold: True
+                    font_size: "18sp"
+                    color: ACCENT_CYAN
+                Label:
+                    text: root.badge
+                    font_size: "11sp"
+                    color: TEXT_MUTED
+
+            Label:
+                text: root.mmr_text
+                size_hint_x: 0.22
+                font_size: "16sp"
+                bold: True
+                color: TEXT_PRIMARY
+                halign: "center"
+                text_size: self.size
+
+            Label:
+                text: root.record_text
+                size_hint_x: 0.22
+                color: TEXT_MUTED
+                halign: "center"
+                text_size: self.size
+
+            CyberButton:
+                text: "LOG OUT"
+                size_hint_x: 0.18
+                bg_color: SURFACE_ELEVATED
+                on_release: root.logout()
+
+        BoxLayout:
+            spacing: "14dp"
+
+            PanelCard:
+                orientation: "vertical"
+                padding: "18dp"
+                spacing: "10dp"
+                size_hint_x: 0.52
+                bg_color: SURFACE_PANEL
+
+                Label:
+                    text: "MATCH CONFIGURATION"
+                    bold: True
+                    color: ACCENT_CYAN
+                    font_size: "13sp"
+                    size_hint_y: None
+                    height: "22dp"
+
+                Label:
+                    text: "Arena Preset"
+                    color: TEXT_MUTED
+                    font_size: "12sp"
+                    size_hint_y: None
+                    height: "18dp"
+
+                Spinner:
+                    id: arena_spinner
+                    text: "Standard Containment"
+                    values: ["Standard Containment", "Twin Pillars", "Overclocked"]
+                    size_hint_y: None
+                    height: "42dp"
+                    background_normal: ""
+                    background_color: SURFACE_ELEVATED
+                    color: TEXT_PRIMARY
+
+                CyberButton:
+                    text: "FIND 1V1 MATCH"
+                    size_hint_y: None
+                    height: "48dp"
+                    bg_color: ACCENT_CYAN
+                    border_color: ACCENT_CYAN
+                    color: 0.02, 0.05, 0.08, 1
+                    on_release: root.find_match()
+
+                PanelCard:
+                    orientation: "vertical"
+                    padding: "12dp"
+                    spacing: "6dp"
+                    size_hint_y: None
+                    height: "110dp"
+                    bg_color: SURFACE_ELEVATED
+                    Label:
+                        text: root.queue_status
+                        font_size: "14sp"
+                        bold: True
+                    Label:
+                        text: root.queue_detail
+                        font_size: "12sp"
+                        color: TEXT_MUTED
+                    CyberButton:
+                        text: "CANCEL SEARCH"
+                        size_hint_y: None
+                        height: "36dp"
+                        bg_color: SURFACE_PANEL
+                        on_release: root.cancel_search()
+
+                CyberButton:
+                    text: "LOCAL 1V1  (SAME KEYBOARD)"
+                    size_hint_y: None
+                    height: "46dp"
+                    bg_color: SURFACE_ELEVATED
+                    border_color: ACCENT_AMBER
+                    on_release: root.local_match()
+
+                Label:
+                    text: "P1  WASD + SPACE fire + L-SHIFT dash\nP2  Arrows + ENTER fire + R-SHIFT dash"
+                    color: TEXT_MUTED
+                    font_size: "12sp"
+                    halign: "left"
+                    valign: "top"
+                    text_size: self.size
+
+            PanelCard:
+                orientation: "vertical"
+                padding: "18dp"
+                spacing: "12dp"
+                size_hint_x: 0.48
+                bg_color: SURFACE_PANEL
+
+                Label:
+                    text: "VERSUS READINESS"
+                    bold: True
+                    color: TEXT_MUTED
+                    font_size: "13sp"
+                    size_hint_y: None
+                    height: "20dp"
+
+                PanelCard:
+                    orientation: "vertical"
+                    padding: "14dp"
+                    spacing: "4dp"
+                    bg_color: SURFACE_ELEVATED
+                    border_color: ACCENT_CYAN
+                    Label:
+                        text: "SLOT 01"
+                        color: ACCENT_CYAN
+                        font_size: "11sp"
+                        size_hint_y: None
+                        height: "16dp"
+                    Label:
+                        text: root.slot1_name
+                        bold: True
+                        font_size: "22sp"
+                    Label:
+                        text: root.slot1_meta
+                        color: TEXT_MUTED
+                    Label:
+                        text: "READY"
+                        color: STATE_SUCCESS
+                        bold: True
+                        size_hint_y: None
+                        height: "24dp"
+
+                PanelCard:
+                    orientation: "vertical"
+                    padding: "14dp"
+                    spacing: "4dp"
+                    bg_color: SURFACE_ELEVATED
+                    border_color: ACCENT_AMBER
+                    Label:
+                        text: "SLOT 02"
+                        color: ACCENT_AMBER
+                        font_size: "11sp"
+                        size_hint_y: None
+                        height: "16dp"
+                    Label:
+                        text: root.slot2_name
+                        bold: True
+                        font_size: "22sp"
+                    Label:
+                        text: root.slot2_meta
+                        color: TEXT_MUTED
+                    Label:
+                        text: root.slot2_ready
+                        color: root.slot2_color
+                        bold: True
+                        size_hint_y: None
+                        height: "24dp"
