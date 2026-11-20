@@ -1,0 +1,18 @@
+#:import palette core_duel.palette
+#:set BG_VOID palette.BG_VOID
+#:set SURFACE_PANEL palette.SURFACE_PANEL
+#:set SURFACE_ELEVATED palette.SURFACE_ELEVATED
+#:set BORDER_CONDUIT palette.BORDER_CONDUIT
+#:set TEXT_PRIMARY palette.TEXT_PRIMARY
+#:set TEXT_MUTED palette.TEXT_MUTED
+#:set ACCENT_CYAN palette.ACCENT_CYAN
+#:set ACCENT_AMBER palette.ACCENT_AMBER
+#:set STATE_SUCCESS palette.STATE_SUCCESS
+#:set STATE_ERROR palette.STATE_ERROR
+
+<Label>:
+    color: TEXT_PRIMARY
+    font_size: "15sp"
+    halign: "left"
+    valign: "middle"
+    text_size: self.size if self.shorten else (self.width, None)
